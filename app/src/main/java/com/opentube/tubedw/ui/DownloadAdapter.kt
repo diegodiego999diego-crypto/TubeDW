@@ -51,7 +51,7 @@ class DownloadAdapter(
         holder.bind(rows[position])
     }
 
-    class Holder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class Holder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val icon: ImageView = itemView.findViewById(R.id.dlIcon)
         private val title: TextView = itemView.findViewById(R.id.dlTitle)
         private val meta: TextView = itemView.findViewById(R.id.dlMeta)
