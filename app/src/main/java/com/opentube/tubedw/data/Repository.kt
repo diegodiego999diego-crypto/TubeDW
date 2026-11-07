@@ -41,14 +41,14 @@ object Repository {
         val kioskList = service.kioskList
         val extractor = kioskList.defaultKioskExtractor
         extractor.fetchPage()
-        extractor.initialPage.items().mapNotNull { it.asVideo() }
+        extractor.initialPage.items.mapNotNull { it.asVideo() }
     }
 
     /** Resultados de búsqueda. */
     suspend fun search(query: String): List<VideoItem> = withContext(Dispatchers.IO) {
         val extractor = service.getSearchExtractor(query)
         extractor.fetchPage()
-        extractor.initialPage.items().mapNotNull { it.asVideo() }
+        extractor.initialPage.items.mapNotNull { it.asVideo() }
     }
 
     /** Videos relacionados con una URL de video (usado para recomendaciones). */
@@ -73,9 +73,9 @@ object Repository {
             val videos = try {
                 val tab = service.getChannelTabExtractorFromId(extractor.id, "videos")
                 tab.fetchPage()
-                tab.initialPage.items().mapNotNull { it.asVideo() }
+                tab.initialPage.items.mapNotNull { it.asVideo() }
             } catch (e: Exception) {
-                emptyList()
+                emptyList<VideoItem>()
             }
 
             info to videos
