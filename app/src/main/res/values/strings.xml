@@ -14,6 +14,70 @@
     <string name="loading">Cargando…</string>
     <string name="error_feed">No se pudo cargar el feed. Revisa tu conexión.</string>
     <string name="error_video">No se pudo cargar el video.</string>
-    <string name="download_soon">Descargas próximamente</string>
     <string name="recommendations">Recomendado para ti</string>
+
+    <!-- Navegación inferior -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_likes">Me gusta</string>
+    <string name="nav_downloads">Descargas</string>
+
+    <!-- Estados de listas -->
+    <string name="empty_likes">Aún no has dado «Me gusta» a ningún video.</string>
+    <string name="empty_downloads">No hay descargas todavía.</string>
+    <string name="likes_header">Me gusta</string>
+    <string name="downloads_header">Descargas</string>
+
+    <!-- Menú de descarga -->
+    <string name="sheet_video">Video</string>
+    <string name="sheet_audio">Audio</string>
+    <string name="sheet_language">Idioma</string>
+    <string name="lang_auto">Automático</string>
+    <string name="channel_unavailable">Canal no disponible</string>
+    <string name="sheet_loading">Cargando formatos…</string>
+    <string name="sheet_error">No se pudieron cargar las calidades.</string>
+    <string name="sheet_no_video">Sin opciones de video</string>
+    <string name="sheet_no_audio">Sin opciones de audio</string>
+    <string name="sheet_audio_only">Solo audio</string>
+
+    <!-- Descargas -->
+    <string name="download_started">Descarga iniciada</string>
+    <string name="download_queued">En cola</string>
+    <string name="download_active">Descargando</string>
+    <string name="download_merge">Combinando audio y video…</string>
+    <string name="download_done">Completada</string>
+    <string name="download_failed">Error en la descarga</string>
+    <string name="download_canceled">Cancelada</string>
+    <string name="cancel_download">Cancelar descarga</string>
+    <string name="notify_channel_name">Descargas</string>
+    <string name="notify_channel_desc">Progreso de las descargas de TubeDW</string>
+    <string name="notify_downloading">Descargando</string>
+
+    <!-- Ajustes -->
+    <string name="settings">Ajustes</string>
+    <string name="settings_ytdlp">yt-dlp</string>
+    <string name="settings_ytdlp_desc">Motor de descargas. Actualízalo si una web deja de funcionar.</string>
+    <string name="settings_update">Actualizar yt-dlp</string>
+    <string name="settings_updating">Actualizando…</string>
+    <string name="settings_updated">yt-dlp actualizado</string>
+    <string name="settings_uptodate">yt-dlp ya está actualizado</string>
+    <string name="settings_update_error">No se pudo actualizar yt-dlp</string>
+    <string name="settings_version">Versión instalada: %1$s</string>
+    <string name="settings_unknown_version">sin registrar</string>
+    <string name="settings_battery">Segundo plano</string>
+    <string name="settings_battery_desc">Permite que las descargas sigan aunque cierres la app.</string>
+    <string name="settings_battery_on">Sin restricciones de batería</string>
+    <string name="settings_battery_off">Restricciones activas</string>
+    <string name="settings_battery_fix">Quitar restricción</string>
+    <string name="settings_notifications">Notificaciones</string>
+    <string name="settings_notifications_desc">Avisos del progreso de las descargas.</string>
+    <string name="settings_notify_enable">Activar avisos</string>
+    <string name="settings_notify_on">Avisos activados</string>
+
+    <!-- Diálogos -->
+    <string name="battery_dialog_title">Mantener descargas activas</string>
+    <string name="battery_dialog_msg">Para que las descargas continúen en segundo plano, conviene quitarle a TubeDW la restricción de batería de Android.</string>
+    <string name="battery_dialog_now">Ahora</string>
+    <string name="battery_dialog_later">Más tarde</string>
+
+    <string name="error_generic">Algo salió mal. Inténtalo de nuevo.</string>
 </resources>

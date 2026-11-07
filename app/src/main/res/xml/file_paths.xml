@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- /sdcard/Download/TubeDW/{Video,Audio} -->
+    <external-path
+        name="download"
+        path="Download/" />
+</paths>

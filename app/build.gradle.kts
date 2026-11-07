@@ -13,8 +13,21 @@ android {
         applicationId = "com.opentube.tubedw"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+
+        // Solo arm64: mantiene el APK pequeño aunque llevamos yt-dlp + ffmpeg.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Requerido por youtubedl-android: las .so deben extraerse a disco
+            // para poder ejecutar python, yt-dlp y ffmpeg.
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -52,6 +65,10 @@ dependencies {
     implementation("io.coil-kt:coil:2.7.0")
 
     implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
+
+    // yt-dlp + Python para Android (los mismos que usa Seal).
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.1")
