@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TubeDW</string>
+    <string name="search_hint">Buscar videos</string>
+    <string name="search">Buscar</string>
+    <string name="like">Me gusta</string>
+    <string name="liked">Te gusta</string>
+    <string name="channel">Canal</string>
+    <string name="download">Descargar</string>
+    <string name="related">Relacionados</string>
+    <string name="close">Cerrar</string>
+    <string name="minimize">Minimizar</string>
+    <string name="play_pause">Reproducir o pausar</string>
+    <string name="loading">Cargando…</string>
+    <string name="error_feed">No se pudo cargar el feed. Revisa tu conexión.</string>
+    <string name="error_video">No se pudo cargar el video.</string>
+    <string name="download_soon">Descargas próximamente</string>
+    <string name="recommendations">Recomendado para ti</string>
+</resources>
