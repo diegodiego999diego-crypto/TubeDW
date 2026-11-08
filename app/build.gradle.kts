@@ -13,8 +13,8 @@ android {
         applicationId = "com.opentube.tubedw"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         // Solo arm64: mantiene el APK pequeño aunque llevamos yt-dlp + ffmpeg.
         ndk {

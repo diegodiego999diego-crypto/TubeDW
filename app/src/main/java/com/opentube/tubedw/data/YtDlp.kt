@@ -129,17 +129,6 @@ object YtDlp {
         }
     }
 
-    /** Lee todas las calidades disponibles con `yt-dlp -J`. */
-    suspend fun fetchFormats(context: Context, url: String): FormatList =
-        withContext(Dispatchers.IO) {
-            ensureInit(context)
-            val request = YoutubeDLRequest(url)
-            request.addOption("--dump-single-json")
-            request.addOption("--no-playlist")
-            val response = execute(request, null, null)
-            Formats.parse(response.out)
-        }
-
     /** Cancela una descarga en marcha. */
     fun cancel(processId: String) {
         try {

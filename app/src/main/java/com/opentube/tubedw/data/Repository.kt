@@ -97,9 +97,64 @@ object Repository {
             likeCount = info.likeCount,
             playUrl = source.first,
             playMimeType = source.second,
+            formats = formatListOf(info),
+            qualities = qualityOptionsOf(info),
             related = info.relatedItems.mapNotNull { it.asVideo() }
         )
     }
+
+    /**
+     * Calidades e idiomas del video, sacados de la misma respuesta de NewPipe
+     * que ya se usó para reproducirlo: el menú de descarga abre al instante.
+     */
+    private fun formatListOf(info: StreamInfo): FormatList = try {
+        Formats.fromNewPipe(info)
+    } catch (e: Exception) {
+        FormatList.EMPTY
+    }
+
+    /** Calidades visibles en el selector de reproducción. */
+    private fun qualityOptionsOf(info: StreamInfo): List<QualityOption> {
+        val out = LinkedHashMap<Int, QualityOption>()
+
+        for (stream in info.videoOnlyStreams.orEmpty()) {
+            val height = stream.height
+            if (height <= 0) continue
+            val current = out[height]
+            if (current == null || stream.fps > current.fps) {
+                out[height] = QualityOption(
+                    height = height,
+                    fps = stream.fps,
+                    label = Formats.videoLabel(height, stream.fps)
+                    // url null: la fuente de reproducción es adaptativa (DASH)
+                )
+            }
+        }
+
+        if (out.isEmpty()) {
+            for (stream in info.videoStreams.orEmpty()) {
+                val height = stream.height
+                val url = stream.url
+                if (height <= 0 || url == null || url.isEmpty()) continue
+                out[height] = QualityOption(
+                    height = height,
+                    fps = stream.fps,
+                    label = Formats.videoLabel(height, stream.fps),
+                    url = url,
+                    mimeType = progressiveMime(url)
+                )
+            }
+        }
+
+        return out.values.sortedByDescending { it.height }
+    }
+
+    /**
+     * Sin cabecera MIME, los streams progresivos se identifican por la extensión
+     * de la URL; en YouTube los progresivos son MP4.
+     */
+    private fun progressiveMime(url: String): String =
+        if (url.contains(".webm", ignoreCase = true)) "video/webm" else "video/mp4"
 
     /**
      * Elige la fuente de reproducción: primero DASH (mejor calidad, adaptativa),

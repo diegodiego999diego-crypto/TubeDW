@@ -73,10 +73,15 @@ class DownloadService : Service() {
 
         if (sawActive) {
             sawActive = false
+            val pausedCount = tasks.count {
+                it.status == com.opentube.tubedw.data.DownloadStatus.PAUSED
+            }
             val failed = tasks.count {
                 it.status == com.opentube.tubedw.data.DownloadStatus.FAILED
             }
             val text = when {
+                pausedCount > 1 -> "$pausedCount descargas en pausa"
+                pausedCount == 1 -> "1 descarga en pausa"
                 failed > 0 -> "$failed descarga${if (failed > 1) "s" else ""} con error"
                 else -> getString(R.string.download_done)
             }
@@ -92,16 +97,22 @@ class DownloadService : Service() {
     }
 
     private fun startAsForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(NOTIF_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+            foreground = true
+        } catch (e: Exception) {
+            // Android puede negar el servicio en primer plano; la cola de
+            // descargas sigue funcionando aunque no haya notificación.
+            foreground = false
         }
-        foreground = true
     }
 
     private fun progressNotification(progress: Int, text: String): Notification {
@@ -165,10 +176,15 @@ class DownloadService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, DownloadService::class.java)
-            if (Build.VERSION.SDK_INT >= 26) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                // Android puede rechazar el servicio en primer plano si la app
+                // está en segundo plano: las descargas siguen igualmente.
             }
         }
     }

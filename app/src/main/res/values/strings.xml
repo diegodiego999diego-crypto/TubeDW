@@ -9,6 +9,7 @@
     <string name="download">Descargar</string>
     <string name="related">Relacionados</string>
     <string name="close">Cerrar</string>
+    <string name="cancel">Cancelar</string>
     <string name="minimize">Minimizar</string>
     <string name="play_pause">Reproducir o pausar</string>
     <string name="loading">Cargando…</string>
@@ -80,4 +81,18 @@
     <string name="battery_dialog_later">Más tarde</string>
 
     <string name="error_generic">Algo salió mal. Inténtalo de nuevo.</string>
+
+    <!-- Calidad de reproducción -->
+    <string name="quality">Calidad</string>
+    <string name="quality_title">Calidad de video</string>
+    <string name="quality_auto">Automática</string>
+    <string name="settings_quality">Calidad de reproducción</string>
+    <string name="settings_quality_desc">Calidad máxima que se usa al abrir cualquier video.</string>
+
+    <!-- Pausa y reintentos de descarga -->
+    <string name="pause_download">Pausar descarga</string>
+    <string name="resume_download">Reanudar descarga</string>
+    <string name="download_paused">Pausada</string>
+    <string name="download_retrying">Reintentando…</string>
+    <string name="retry_download">Reintentar</string>
 </resources>

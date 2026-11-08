@@ -72,4 +72,15 @@
         android:src="@drawable/ic_close"
         app:tint="@color/gray"
         android:visibility="gone" />
+
+    <ImageButton
+        android:id="@+id/dlAction2"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/close"
+        android:src="@drawable/ic_close"
+        app:tint="@color/gray"
+        android:visibility="gone" />
 </LinearLayout>

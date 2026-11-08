@@ -44,6 +44,7 @@ import com.opentube.tubedw.data.AppDatabase
 import com.opentube.tubedw.data.AudioOption
 import com.opentube.tubedw.data.DownloadKind
 import com.opentube.tubedw.data.DownloadManager
+import com.opentube.tubedw.data.DownloadStatus
 import com.opentube.tubedw.data.FormatList
 import com.opentube.tubedw.data.Formats
 import com.opentube.tubedw.data.Repository
@@ -53,7 +54,6 @@ import com.opentube.tubedw.data.VideoItem
 import com.opentube.tubedw.data.VideoOption
 import com.opentube.tubedw.data.YtDlp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -131,8 +131,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var videoLangText: TextView
     private lateinit var audioLangText: TextView
 
+    // Selector de calidad del reproductor
+    private lateinit var btnQuality: View
+    private lateinit var qualitySheet: View
+    private lateinit var qualityTitle: TextView
+    private lateinit var qualityOptions: android.widget.LinearLayout
+
     // Ajustes
     private lateinit var settingsScreen: View
+    private lateinit var settingsQualitySpinner: Spinner
     private lateinit var settingsYtdlpVersion: TextView
     private lateinit var settingsBatteryState: TextView
     private lateinit var settingsNotifyState: TextView
@@ -149,7 +156,10 @@ class MainActivity : AppCompatActivity() {
     private var sheetFormats: FormatList? = null
     private var sheetVideoLang: String? = null
     private var sheetAudioLang: String? = null
-    private var sheetJob: Job? = null
+
+    /** Calidad elegida a mano para el vídeo actual (null = automática). */
+    private var selectedHeight: Int? = null
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -173,6 +183,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Las descargas que quedaron a medias se recuperan y siguen solas.
+        DownloadManager.restore(this)
+
         loadFeed()
     }
 
@@ -185,6 +198,11 @@ class MainActivity : AppCompatActivity() {
         likesScreen = findViewById(R.id.likesScreen)
         downloadsScreen = findViewById(R.id.downloadsScreen)
         bottomNav = findViewById(R.id.bottomNav)
+        // Material pinta el fondo de la barra con su propio color y tinte,
+        // así que se fuerza a blanco después de inflar para que no se vea
+        // teñida por debajo de las pestañas.
+        bottomNav.backgroundTintList = null
+        bottomNav.setBackgroundColor(ContextCompat.getColor(this, R.color.white))
 
         searchBar = findViewById(R.id.searchBar)
         searchInput = findViewById(R.id.searchInput)
@@ -241,7 +259,13 @@ class MainActivity : AppCompatActivity() {
         videoLangText = findViewById(R.id.videoLangText)
         audioLangText = findViewById(R.id.audioLangText)
 
+        btnQuality = findViewById(R.id.btnQuality)
+        qualitySheet = findViewById(R.id.qualitySheet)
+        qualityTitle = findViewById(R.id.qualityTitle)
+        qualityOptions = findViewById(R.id.qualityOptions)
+
         settingsScreen = findViewById(R.id.settingsScreen)
+        settingsQualitySpinner = findViewById(R.id.settingsQualitySpinner)
         settingsYtdlpVersion = findViewById(R.id.settingsYtdlpVersion)
         settingsBatteryState = findViewById(R.id.settingsBatteryState)
         settingsNotifyState = findViewById(R.id.settingsNotifyState)
@@ -264,6 +288,13 @@ class MainActivity : AppCompatActivity() {
         likesList.adapter = likesAdapter
 
         downloadAdapter = DownloadAdapter(
+            onPauseResume = { task ->
+                when (task.status) {
+                    DownloadStatus.QUEUED, DownloadStatus.RUNNING ->
+                        DownloadManager.pause(task.id)
+                    else -> DownloadManager.resume(task.id)
+                }
+            },
             onCancel = { task -> DownloadManager.cancel(task.id) },
             onDismiss = { task -> DownloadManager.dismiss(task.id) },
             onOpen = { file -> openDownloadedFile(file) }
@@ -327,6 +358,7 @@ class MainActivity : AppCompatActivity() {
         btnChannel.setOnClickListener { openCurrentChannel() }
         videoChannel.setOnClickListener { openCurrentChannel() }
         btnDownload.setOnClickListener { openDownloadSheet() }
+        btnQuality.setOnClickListener { openQualitySheet() }
         channelBack.setOnClickListener { loadFeed() }
         findViewById<View>(R.id.settingsGear).setOnClickListener { openSettings() }
     }
@@ -374,6 +406,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    qualitySheet.visibility == View.VISIBLE -> closeQualitySheet()
                     downloadSheet.visibility == View.VISIBLE -> closeDownloadSheet()
                     settingsScreen.visibility == View.VISIBLE -> closeSettings()
                     playerFull.visibility == View.VISIBLE -> collapsePlayer()
@@ -525,6 +558,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupPlayer(stream: StreamData) {
         releasePlayer()
+        // Cada vídeo nuevo vuelve a la calidad elegida en Ajustes.
+        selectedHeight = null
 
         val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(USER_AGENT)
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
@@ -535,6 +570,7 @@ class MainActivity : AppCompatActivity() {
         val builder = MediaItem.Builder().setUri(stream.playUrl)
         stream.playMimeType?.let { builder.setMimeType(it) }
         player.setMediaItem(builder.build())
+        applyQualityLimit(player)
         player.prepare()
         player.playWhenReady = true
 
@@ -546,6 +582,24 @@ class MainActivity : AppCompatActivity() {
 
         playerView.player = player
         exoPlayer = player
+    }
+
+    /**
+     * Limita la calidad máxima sin tocar la URL: con DASH/HLS el reproductor
+     * elige la pista dentro de ese límite y va cambiando sobre la marcha.
+     */
+    private fun applyQualityLimit(player: ExoPlayer) {
+        val wanted = selectedHeight ?: defaultPlaybackHeight()
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setMaxVideoSize(MAX_VIDEO_WIDTH, wanted ?: MAX_VIDEO_HEIGHT)
+            .build()
+    }
+
+    /** Altura máxima guardada en Ajustes, o null si está en automático. */
+    private fun defaultPlaybackHeight(): Int? {
+        val value = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getInt(KEY_MAX_HEIGHT, 0)
+        return value.takeIf { it > 0 }
     }
 
     private fun releasePlayer() {
@@ -646,8 +700,8 @@ class MainActivity : AppCompatActivity() {
         val tasks = DownloadManager.state.value
         val rows = ArrayList<DownloadRow>()
 
-        tasks.filter { it.active }.forEach { rows.add(DownloadRow.Active(it)) }
-        tasks.filter { !it.active }.forEach { rows.add(DownloadRow.Problem(it)) }
+        tasks.filter { it.inQueue }.forEach { rows.add(DownloadRow.Active(it)) }
+        tasks.filter { !it.inQueue }.forEach { rows.add(DownloadRow.Problem(it)) }
 
         // El progreso cambia unas 10 veces por segundo: solo se vuelve a leer el
         // disco cuando cambia el estado de alguna descarga, no en cada tick.
@@ -694,50 +748,114 @@ class MainActivity : AppCompatActivity() {
     /* ------------------------------------------------------------------ */
 
     private fun setupDownloadSheet() {
-        sheetScrim.setOnClickListener { closeDownloadSheet() }
+        sheetScrim.setOnClickListener { closeActiveSheet() }
         findViewById<View>(R.id.sheetClose).setOnClickListener { closeDownloadSheet() }
+        findViewById<View>(R.id.qualityClose).setOnClickListener { closeQualitySheet() }
     }
 
     private fun openDownloadSheet() {
-        val item = currentItem ?: return
-        sheetFormats = null
+        // Las calidades ya vienen de NewPipe Extractor junto con el vídeo, así
+        // que el menú se abre al instante: yt-dlp solo se usa para descargar.
+        val formats = currentStream?.formats ?: return
         sheetVideoLang = null
         sheetAudioLang = null
+        sheetTitle.text = currentStream?.title ?: currentItem?.title ?: ""
 
-        sheetTitle.text = item.title
         videoOptions.removeAllViews()
         audioOptions.removeAllViews()
         videoEmpty.visibility = View.GONE
         audioEmpty.visibility = View.GONE
         videoLangRow.visibility = View.GONE
         audioLangRow.visibility = View.GONE
-        sheetError.visibility = View.GONE
-        sheetLoading.visibility = View.VISIBLE
+        sheetLoading.visibility = View.GONE
         sheetColumns.visibility = View.GONE
+
+        val empty = formats.video.isEmpty() && formats.audio.isEmpty()
+        sheetError.visibility = if (empty) View.VISIBLE else View.GONE
+        sheetFormats = if (empty) null else formats
 
         sheetScrim.visibility = View.VISIBLE
         downloadSheet.visibility = View.VISIBLE
+        qualitySheet.visibility = View.GONE
 
-        sheetJob?.cancel()
-        sheetJob = lifecycleScope.launch {
-            try {
-                val formats = YtDlp.fetchFormats(this@MainActivity, item.url)
-                sheetFormats = formats
-                renderSheet(formats)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                sheetLoading.visibility = View.GONE
-                sheetError.visibility = View.VISIBLE
-            }
-        }
+        if (!empty) renderSheet(formats)
     }
 
     private fun closeDownloadSheet() {
-        sheetJob?.cancel()
-        sheetJob = null
+        // sheetFormats NO se vacía aquí: las filas llaman a closeDownloadSheet
+        // justo antes de su onClick, y startVideoDownload lo necesita.
         downloadSheet.visibility = View.GONE
         sheetScrim.visibility = View.GONE
+    }
+
+    /** Cierra la hoja que esté abierta (descarga o calidad). */
+    private fun closeActiveSheet() {
+        if (qualitySheet.visibility == View.VISIBLE) closeQualitySheet()
+        else closeDownloadSheet()
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Selector de calidad del reproductor                                 */
+    /* ------------------------------------------------------------------ */
+
+    private fun openQualitySheet() {
+        val stream = currentStream ?: return
+        qualityTitle.text = stream.title
+        qualityOptions.removeAllViews()
+
+        // La primera fila siempre es la automática (calidad adaptativa).
+        val rows = ArrayList<Pair<String, Int?>>()
+        rows.add(getString(R.string.quality_auto) to null)
+        stream.qualities.forEach { option -> rows.add(option.label to option.height) }
+
+        rows.forEach { (label, height) ->
+            addOptionRow(qualityOptions, label) { applyQuality(height) }
+        }
+
+        sheetScrim.visibility = View.VISIBLE
+        qualitySheet.visibility = View.VISIBLE
+        downloadSheet.visibility = View.GONE
+    }
+
+    private fun closeQualitySheet() {
+        qualitySheet.visibility = View.GONE
+        sheetScrim.visibility = View.GONE
+    }
+
+    /**
+     * Cambia la calidad **sin recargar el vídeo**: con DASH/HLS se limita la
+     * pista que elige el reproductor y este salta de tramo en tramo, de forma
+     * que la posición y el estado de reproducción se conservan. Solo si la
+     * fuente es progresiva hace falta cambiar de URL, y aun así se mantiene
+     * el punto por el que se iba.
+     */
+    private fun applyQuality(height: Int?) {
+        selectedHeight = height
+        val player = exoPlayer ?: return
+        val stream = currentStream ?: return
+
+        val adaptive = stream.playMimeType == Repository.MIME_DASH ||
+            stream.playMimeType == Repository.MIME_HLS
+
+        if (adaptive) {
+            applyQualityLimit(player)
+            return
+        }
+
+        val source = height?.let { wanted -> stream.qualities.firstOrNull { it.height == wanted } }
+        val url = source?.url
+        if (source == null || url == null || url.isEmpty() || url == stream.playUrl) {
+            applyQualityLimit(player)
+            return
+        }
+
+        val position = player.currentPosition
+        val wasPlaying = player.playWhenReady
+        val builder = MediaItem.Builder().setUri(url)
+        source.mimeType?.let { builder.setMimeType(it) }
+        player.setMediaItem(builder.build(), position)
+        player.prepare()
+        player.playWhenReady = wasPlaying
     }
 
     private fun renderSheet(formats: FormatList) {
@@ -829,7 +947,7 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.item_option, container, false)
         view.findViewById<TextView>(R.id.optionLabel).text = label
         view.setOnClickListener {
-            closeDownloadSheet()
+            closeActiveSheet()
             onClick()
         }
         container.addView(view)
@@ -858,6 +976,9 @@ class MainActivity : AppCompatActivity() {
         val parts = mutableListOf<String>()
         if (audio != null) parts.add("${video.formatId}+${audio.formatId}")
         parts.add("${video.formatId}+ba")
+        // Respallos por si el identificador que trae NewPipe no le suena a yt-dlp:
+        // se pide la mejor pista hasta esa altura.
+        parts.add("bv[height<=${video.height}]+ba")
         parts.add("b[height<=${video.height}]")
         return parts.joinToString("/")
     }
@@ -926,6 +1047,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSettings() {
         findViewById<View>(R.id.settingsBack).setOnClickListener { closeSettings() }
+        setupQualityPreference()
 
         btnUpdateYtdlp.setOnClickListener {
             btnUpdateYtdlp.isEnabled = false
@@ -954,10 +1076,46 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun askBatteryOptimizationDirect() {
-        getSharedPreferences("tubedw", MODE_PRIVATE)
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             .edit().putBoolean("battery_asked", false).apply()
         askBatteryOptimization()
         updateSettingsStates()
+    }
+
+    /**
+     * Calidad máxima que se usará al abrir cualquier video. 0 = automática
+     * (que es como se comporta el reproductor por defecto).
+     */
+    private fun setupQualityPreference() {
+        val choices = listOf(
+            getString(R.string.quality_auto) to 0,
+            "2160p" to 2160,
+            "1440p" to 1440,
+            "1080p" to 1080,
+            "720p" to 720,
+            "480p" to 480,
+            "360p" to 360
+        )
+
+        settingsQualitySpinner.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, choices.map { it.first }
+        )
+
+        val saved = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt(KEY_MAX_HEIGHT, 0)
+        val index = choices.indexOfFirst { it.second == saved }.coerceAtLeast(0)
+        settingsQualitySpinner.setSelection(index, false)
+        settingsQualitySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?, view: View?, position: Int, id: Long
+            ) {
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putInt(KEY_MAX_HEIGHT, choices[position].second)
+                    .apply()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
     }
 
     private fun openSettings() {
@@ -1025,5 +1183,12 @@ class MainActivity : AppCompatActivity() {
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        private const val PREFS_NAME = "tubedw"
+        private const val KEY_MAX_HEIGHT = "pref_max_height"
+
+        /** Tope de ancho/alto para que ExoPlayer no descarte la pista elegida. */
+        private const val MAX_VIDEO_WIDTH = 7680
+        private const val MAX_VIDEO_HEIGHT = 4320
     }
 }

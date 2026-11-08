@@ -1,7 +1,9 @@
 package com.opentube.tubedw.data
 
-import org.json.JSONArray
-import org.json.JSONObject
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.Stream
+import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.VideoStream
 import java.util.Locale
 
 /** Opción de calidad de video (se descarga uniendo video + audio). */
@@ -24,7 +26,13 @@ data class AudioOption(
     val label: String
 )
 
-/** Conjunto de opciones extraído de `yt-dlp -J`. */
+/**
+ * Conjunto de opciones de descarga.
+ *
+ * Lo rellena [Formats.fromNewPipe] con la información que NewPipe Extractor ya
+ * ha descargado al abrir el video, así que no hace falta volver a pedirle los
+ * formatos a yt-dlp (era lo que hacía que el menú tardase tanto).
+ */
 data class FormatList(
     val video: List<VideoOption>,
     val audio: List<AudioOption>,
@@ -39,114 +47,129 @@ data class FormatList(
 
     /** Mejor audio para un idioma, o null si no hay ninguno. */
     fun bestAudio(language: String?): AudioOption? = audioFor(language).firstOrNull()
+
+    companion object {
+        val EMPTY = FormatList(emptyList(), emptyList(), emptyList())
+    }
 }
 
 object Formats {
 
-    fun parse(json: String): FormatList {
-        val root = JSONObject(json)
-        val array: JSONArray = root.optJSONArray("formats") ?: JSONArray()
+    /**
+     * Construye las opciones de descarga a partir de la información de NewPipe.
+     *
+     * @param info ya extraído por el reproductor: no se hace ninguna red.
+     */
+    fun fromNewPipe(info: StreamInfo): FormatList {
+        // height -> mejor stream de video solo (el que se une con el audio)
+        val videos = LinkedHashMap<Int, VideoOption>()
 
-        // height -> mejor formato de video solo
-        val videos = HashMap<Int, VideoOption>()
-        // clave (bitrate|ext|idioma) -> mejor formato de audio
-        val audios = LinkedHashMap<String, AudioOption>()
-        val languages = LinkedHashSet<String>()
-
-        for (i in 0 until array.length()) {
-            val f = array.optJSONObject(i) ?: continue
-            val id = f.optString("format_id")
-            if (id.isEmpty()) continue
-            // storyboards y otros formatos que no son medios
-            if (id.startsWith("sb") || id.startsWith("nn")) continue
-            val ext = f.optString("ext")
-            if (ext == "mhtml") continue
-
-            val vcodec = f.optString("vcodec")
-            val acodec = f.optString("acodec")
-            val hasVideo = vcodec.isNotEmpty() && vcodec != "none"
-            val hasAudio = acodec.isNotEmpty() && acodec != "none"
-            val language = f.optString("language")
-                .takeIf { it.isNotEmpty() && it != "und" }
-
-            if (hasVideo && !hasAudio) {
-                // Stream de video solo: se une después con el audio elegido.
-                val height = f.optInt("height", 0)
-                if (height > 0) {
-                    val fps = f.optInt("fps", 0)
-                    val tbr = f.optDouble("tbr", 0.0)
-                    val current = videos[height]
-                    if (current == null || isBetterVideo(fps, tbr, ext, current)) {
-                        videos[height] = VideoOption(
-                            height = height,
-                            fps = fps,
-                            tbr = tbr,
-                            ext = ext,
-                            formatId = id,
-                            label = videoLabel(height, fps)
-                        )
-                    }
-                }
-            } else if (!hasVideo && hasAudio) {
-                // Stream de audio solo: se puede guardar tal cual.
-                val bitrate = f.optInt("abr", 0).let {
-                    if (it > 0) it else f.optInt("tbr", 0)
-                }
-                val bytes = f.optLong("filesize", 0L).let {
-                    if (it > 0) it else f.optLong("filesize_approx", 0L)
-                }
-                val key = "$bitrate|$ext|${language ?: ""}"
-                val current = audios[key]
-                if (current == null || bytes > current.bytes) {
-                    audios[key] = AudioOption(
-                        formatId = id,
-                        bitrate = bitrate,
-                        ext = ext,
-                        language = language,
-                        bytes = bytes,
-                        label = audioLabel(bitrate, ext, acodec, bytes)
-                    )
-                }
-                if (language != null) languages.add(language)
+        for (stream in info.videoOnlyStreams.orEmpty()) {
+            val height = stream.height
+            val id = formatIdOf(stream)
+            if (height <= 0 || id.isEmpty()) continue
+            val current = videos[height]
+            if (current == null || isBetterVideo(stream, current)) {
+                videos[height] = VideoOption(
+                    height = height,
+                    fps = stream.fps,
+                    tbr = stream.bitrate / 1000.0,
+                    ext = "mp4",
+                    formatId = id,
+                    label = videoLabel(height, stream.fps)
+                )
             }
         }
 
-        val videoList = videos.values.sortedByDescending { it.height }
-        val audioList = audios.values.sortedWith(
-            compareByDescending<AudioOption> { it.bitrate }.thenBy { it.ext }
-        )
+        // Sin DASH se recurre a los progresivos, que ya llevan audio incluido.
+        if (videos.isEmpty()) {
+            for (stream in info.videoStreams.orEmpty()) {
+                val height = stream.height
+                val id = formatIdOf(stream)
+                if (height <= 0 || id.isEmpty()) continue
+                val current = videos[height]
+                if (current == null || isBetterVideo(stream, current)) {
+                    videos[height] = VideoOption(
+                        height = height,
+                        fps = stream.fps,
+                        tbr = stream.bitrate / 1000.0,
+                        ext = "mp4",
+                        formatId = id,
+                        label = videoLabel(height, stream.fps)
+                    )
+                }
+            }
+        }
+
+        // clave (bitrate|ext|idioma) -> mejor stream de audio
+        val audios = LinkedHashMap<String, AudioOption>()
+        val languages = LinkedHashSet<String>()
+
+        for (stream in info.audioStreams.orEmpty()) {
+            val id = formatIdOf(stream)
+            if (id.isEmpty()) continue
+            val bitrate = stream.averageBitrate.takeIf { it > 0 } ?: stream.bitrate
+            val codec = stream.codec.orEmpty()
+            val ext = if (codec.contains("opus", ignoreCase = true)) "webm" else "m4a"
+            val language = audioLanguage(stream)
+            val key = "$bitrate|$ext|${language ?: ""}"
+            val current = audios[key]
+            if (current == null || bitrate > current.bitrate) {
+                audios[key] = AudioOption(
+                    formatId = id,
+                    bitrate = bitrate,
+                    ext = ext,
+                    language = language,
+                    bytes = 0L,
+                    label = audioLabel(bitrate, codec, ext)
+                )
+            }
+            if (language != null) languages.add(language)
+        }
 
         return FormatList(
-            video = videoList,
-            audio = audioList,
+            video = videos.values.sortedByDescending { it.height },
+            audio = audios.values.sortedByDescending { it.bitrate },
             languages = languages.sorted()
         )
     }
 
-    /** Prefiere más fps, luego contenedor mp4, luego más bitrate. */
-    private fun isBetterVideo(fps: Int, tbr: Double, ext: String, current: VideoOption): Boolean {
-        if (fps != current.fps) return fps > current.fps
-        val thisMp4 = ext == "mp4"
-        val currentMp4 = current.ext == "mp4"
-        if (thisMp4 != currentMp4) return thisMp4
-        return tbr > current.tbr
+    /**
+     * Id que entiende yt-dlp para YouTube: el itag ("137", "140", "251"…).
+     * NewPipe lo guarda como `id` del stream, así que si no viene vacío ya es
+     * el identificador exacto que espera yt-dlp.
+     */
+    private fun formatIdOf(stream: Stream): String {
+        val id = stream.id
+        return if (id.isNullOrBlank()) "" else id
     }
 
-    private fun videoLabel(height: Int, fps: Int): String =
+    /** Idioma del audio, si el stream lo trae ("es", "en-US", "English"…). */
+    private fun audioLanguage(stream: AudioStream): String? {
+        val locale = stream.audioLocale?.toLanguageTag()
+            ?.takeIf { it.isNotEmpty() && !it.startsWith("und", ignoreCase = true) }
+        if (locale != null) return locale
+        return stream.audioTrackName?.takeIf { it.isNotEmpty() }
+    }
+
+    /** Prefiere más fps, luego más bitrate. */
+    private fun isBetterVideo(stream: VideoStream, current: VideoOption): Boolean {
+        if (stream.fps != current.fps) return stream.fps > current.fps
+        return stream.bitrate / 1000.0 > current.tbr
+    }
+
+    fun videoLabel(height: Int, fps: Int): String =
         if (fps > 30) "${height}p$fps" else "${height}p"
 
-    private fun audioLabel(bitrate: Int, ext: String, acodec: String, bytes: Long): String {
-        val codec = when {
-            acodec.contains("opus", ignoreCase = true) -> "opus"
-            acodec.contains("mp4a", ignoreCase = true) -> "aac"
-            acodec.contains("vorbis", ignoreCase = true) -> "vorbis"
+    private fun audioLabel(bitrate: Int, codec: String, ext: String): String {
+        val kind = when {
+            codec.contains("opus", ignoreCase = true) -> "opus"
+            codec.contains("mp4a", ignoreCase = true) -> "aac"
+            codec.contains("vorbis", ignoreCase = true) -> "vorbis"
+            codec.isEmpty() -> ext
             else -> ext
         }
-        val parts = mutableListOf<String>()
-        if (bitrate > 0) parts.add("$bitrate kbps") else parts.add(codec)
-        if (bitrate > 0) parts.add(codec)
-        if (bytes > 0) parts.add(formatSize(bytes))
-        return parts.joinToString(" · ")
+        return if (bitrate > 0) "$bitrate kbps · $kind" else kind
     }
 
     fun formatSize(bytes: Long): String = when {

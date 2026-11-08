@@ -25,6 +25,21 @@ data class ChannelInfo(
 )
 
 /**
+ * Calidad que se puede elegir al reproducir.
+ *
+ * [url] solo tiene valor cuando la fuente es progresiva (video con audio ya
+ * unido); si es null la fuente es adaptativa (DASH/HLS) y la calidad se aplica
+ * limitando el reproductor, sin recargar el video.
+ */
+data class QualityOption(
+    val height: Int,
+    val fps: Int,
+    val label: String,
+    val url: String? = null,
+    val mimeType: String? = null
+)
+
+/**
  * Datos listos para reproducir un video.
  */
 data class StreamData(
@@ -38,5 +53,9 @@ data class StreamData(
     val likeCount: Long,
     val playUrl: String,
     val playMimeType: String?,
+    /** Calidades e idiomas disponibles, ya extraídos con NewPipe Extractor. */
+    val formats: FormatList,
+    /** Calidades que se pueden elegir mientras se reproduce. */
+    val qualities: List<QualityOption>,
     val related: List<VideoItem>
 )
